@@ -1,3 +1,17 @@
+# LunarTTS
+
+So, it’s like 15.ai but open-source. This modifies Capacitron to support inferring emotions from text without reference audio.
+
+I mean, good luck using it in its current state, as it is unfinished and most likely broken.
+
+If I have the time and resources, I might port the VAE over to FastPitch, so it would run faster. But Tacotron2 is sufficient for now.
+
+
+Also if please do not make any PRs to the actual repositery please
+
+
+
+
 # <img src="https://raw.githubusercontent.com/idiap/coqui-ai-TTS/main/images/coqui-log-green-TTS.png" height="56"/>
 
 
