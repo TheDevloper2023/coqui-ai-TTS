@@ -26,9 +26,9 @@ class CapacitronVAE(nn.Module):
     ):
         super().__init__()
         # Init distributions
-        self.prior_distribution = MVN(
-            torch.zeros(capacitron_VAE_embedding_dim), torch.eye(capacitron_VAE_embedding_dim)
-        )
+
+        self.capacitron_VAE_embedding_dim = capacitron_VAE_embedding_dim
+
         self.approximate_posterior_distribution = None
         # define output ReferenceEncoder dim to the capacitron_VAE_embedding_dim
         self.encoder = ReferenceEncoder(num_mel, out_dim=reference_encoder_out_dim)
@@ -51,9 +51,13 @@ class CapacitronVAE(nn.Module):
 
     def forward(self, reference_mel_info=None, text_info=None, speaker_embedding=None):
         device = next(self.parameters()).device # Get current device safely
+        self.prior_distribution = MVN(
+            torch.zeros(self.capacitron_VAE_embedding_dim, device=device), torch.eye(self.capacitron_VAE_embedding_dim, device=device)
+        )
         text_summary_out = None
+        text_inputs = input_lengths = None
         if text_info is not None:
-                text_inputs = text_info[0]  # [batch_size, num_characters, num_embedding]
+                text_inputs = text_info[0]
                 input_lengths = text_info[1]
                 text_summary_out = self.text_summary_net(text_inputs, input_lengths).to(device)
                 
@@ -67,7 +71,7 @@ class CapacitronVAE(nn.Module):
 
             #Dropout, so like this will be zeros so that the model can learn to predict from text like a sigma
             if self.training and self.ref_dropout_rate > 0.0:
-                if torch.rand(1, device=device).item() < self.reference_dropout_rate:
+                if torch.rand(1, device=device).item() < self.ref_dropout_rate:
                     ref_enc = torch.zeros_like(ref_enc)
             
             enc_out = ref_enc
@@ -80,12 +84,8 @@ class CapacitronVAE(nn.Module):
         # This is useful when I want to just kill 15.ai with an halfbaked site
         elif text_info is not None: 
             batch_size = text_inputs.size(0)
-            dummy_audio = torch.zeros(batch_size, self.reference_encoder_out_dim).to(text_inputs.device)
+            dummy_audio = torch.zeros(batch_size, self.reference_encoder_out_dim).to(device)
             enc_out = torch.cat([dummy_audio, text_summary_out], dim=-1)
-
-        # So like, if your lazy ass can't do refrence audio nor text, than just do this I think
-        else:
-            return self.prior_distribution.sample().unsqueeze(1), None, self.prior_distribution, self.beta
 
 
         if speaker_embedding is not None:
@@ -96,11 +96,8 @@ class CapacitronVAE(nn.Module):
         # an MLP to produce the parameteres for the approximate poterior distributions
         mu, sigma = self.post_encoder_mlp(enc_out)
 
-        # convert to cpu because prior_distribution was created on cpu
-        mu = mu.cpu()
-        sigma = sigma.cpu()
 
-            # Sample from the posterior: z ~ q(z|x)
+         # Sample from the posterior: z ~ q(z|x)
         self.approximate_posterior_distribution = MVN(mu, torch.diag_embed(sigma))
         VAE_embedding = self.approximate_posterior_distribution.rsample()
         return VAE_embedding.unsqueeze(1), self.approximate_posterior_distribution, self.prior_distribution, self.beta
