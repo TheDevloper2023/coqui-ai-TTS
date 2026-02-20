@@ -1,18 +1,13 @@
-# <img src="https://github.com/TheDevloper2023/coqui-ai-TTS/blob/main/images/logo.png" height="56"/>
+# <img src="https://github.com/TheDevloper2023/coqui-ai-TTS/blob/main/images/MS_Paint_Logo_IM_Lazy.png" height="56"/>
 
-So, it’s like 15.ai but open-source. This modifies Capacitron to support inferring emotions from text without reference audio.
+Think of it as a 15.ai but open source thing. This modifies Capacitron to allow conditioning it on text (without reference audio)
 
-~I mean, good luck using it in its current state, as it is unfinished and most likely broken.~ It works now
-
-If I have the time and resources, I might port the VAE over to FastPitch, so it would run faster. But Tacotron2 is sufficient for now.
-
-
-Also, please do not make any PRs merging my code to the original repository
-
-
-Credits to Coqui for the original implementation, thank you for being awesome
+I don't really recommend using it right now, as there are no pretrains and it is prone to errors.
 
 
 
-# Pull Requests
-Uhh, if you fix shit before I do, please make Pull requests for colabs and shit. All of them are welcome
+## PRs
+If you found and fixed an error/bug, please make a pull request. I beg of thy!
+
+## Why the name
+Finished the version at 10:05 PM UTC+2, and because I like Princess Luna, you are stuck with this name, and you must use it as is
