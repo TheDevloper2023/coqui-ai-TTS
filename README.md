@@ -1,4 +1,4 @@
-# LunarTTS
+# <img src="blob:https://github.com/2d5eec10-bf16-4993-95f3-72f315fe8195" height="56"/>
 
 So, it’s like 15.ai but open-source. This modifies Capacitron to support inferring emotions from text without reference audio.
 
