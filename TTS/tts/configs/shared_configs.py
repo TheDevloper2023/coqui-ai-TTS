@@ -71,6 +71,8 @@ class CapacitronVAEConfig(Coqpit):
             corresponding loss function. Defaults to 0.25
         capacitron_grad_clip (float):
             Gradient clipping value for all gradients except beta. Defaults to 5.0
+        capacitron_reference_dropout_rate (float):
+            Probability (0.0 to 1.0) of randomly zeroing the entire reference encoder output embedding during training.
     """
 
     capacitron_loss_alpha: int = 1
@@ -81,7 +83,7 @@ class CapacitronVAEConfig(Coqpit):
     capacitron_use_speaker_embedding: bool = False
     capacitron_VAE_loss_alpha: float = 0.25
     capacitron_grad_clip: float = 5.0
-
+    capacitron_reference_dropout_rate: float = 0.25
     def check_values(self) -> None:
         """Check config fields."""
         c = asdict(self)

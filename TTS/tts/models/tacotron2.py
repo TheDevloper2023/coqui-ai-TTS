@@ -122,6 +122,7 @@ class Tacotron2(BaseTacotron):
                     if self.capacitron_vae.capacitron_use_text_summary_embeddings
                     else None
                 ),
+                ref_drop_rate=self.config.capacitron_reference_dropout_rate if hasattr(self.config, 'capacitron_reference_dropout_rate') else 0.25,
             )
 
         # backward pass decoder
