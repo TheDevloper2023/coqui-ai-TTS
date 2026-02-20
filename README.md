@@ -11,3 +11,8 @@ Also, please do not make any PRs merging my code to the original repositery
 
 
 Credits to Coqui for the original implementation, thank you for being awesome
+
+
+
+# Pull Requests
+Uhh, if you fix shit before I do, please make Pull requests for colabs and shit. All of them are welcome
