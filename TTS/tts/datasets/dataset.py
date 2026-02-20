@@ -69,7 +69,7 @@ def get_audio_size(audiopath: str | os.PathLike[Any]) -> int:
 
     try:
         if is_torch_greater_or_equal("2.9"):
-            return _get_audio_size_torchcodec(audiopath)
+           pass
         else:
             import torchaudio
 

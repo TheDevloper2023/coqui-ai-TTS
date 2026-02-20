@@ -63,43 +63,53 @@ class CapacitronVAE(nn.Module):
                 
 
         # Use reference
+        # This is unchaged from the original implementation
         if reference_mel_info is not None:
             reference_mels = reference_mel_info[0]  # [batch_size, num_frames, num_mels]
             mel_lengths = reference_mel_info[1]  # [batch_size]
-            ref_enc = self.encoder(reference_mels, mel_lengths)
-            
+            enc_out = self.encoder(reference_mels, mel_lengths)
 
-            #Dropout, so like this will be zeros so that the model can learn to predict from text like a sigma
-            if self.training and self.ref_dropout_rate > 0.0:
-                if torch.rand(1, device=device).item() < self.ref_dropout_rate:
-                    ref_enc = torch.zeros_like(ref_enc)
-            
-            enc_out = ref_enc
             if text_summary_out is not None:
                 enc_out = torch.cat([enc_out, text_summary_out], dim=-1)
-                    
 
-        # Use from text
-        # I use an dummy audio, so basiclly the model will need to relly just on text.
-        # This is useful when I want to just kill 15.ai with an halfbaked site
+            if speaker_embedding is not None:
+                speaker_embedding = torch.squeeze(speaker_embedding)
+                enc_out = torch.cat([enc_out, speaker_embedding], dim=-1)
+
+            
+            
+            #Dropout, sometimes it makes the audio refrence zero and it forces the model to learn from text on that step
+            #It makes it learn Text -> VAE embedding better
+            if self.training and self.ref_dropout_rate > 0.0:
+                if torch.rand(1, device=device).item() < self.ref_dropout_rate:
+                    enc_out = torch.zeros_like(enc_out)
+
+            mu, sigma = self.post_encoder_mlp(enc_out)
+            self.approximate_posterior_distribution = MVN(mu, torch.diag_embed(sigma))
+            VAE_embedding = self.approximate_posterior_distribution.rsample()
+
+        # Text only
+        # What it does is instead of doing a regular audio file, it replaces the audio data with zeros, it relies only on text
         elif text_info is not None: 
             batch_size = text_inputs.size(0)
             dummy_audio = torch.zeros(batch_size, self.reference_encoder_out_dim).to(device)
             enc_out = torch.cat([dummy_audio, text_summary_out], dim=-1)
 
+            if speaker_embedding is not None:
+                speaker_embedding = torch.squeeze(speaker_embedding)
+                enc_out = torch.cat([enc_out, speaker_embedding], dim=-1)
 
-        if speaker_embedding is not None:
-            speaker_embedding = torch.squeeze(speaker_embedding)
-            enc_out = torch.cat([enc_out, speaker_embedding], dim=-1)
+            
+            mu, sigma = self.post_encoder_mlp(enc_out)
+            self.approximate_posterior_distribution = MVN(mu, torch.diag_embed(sigma))
+            VAE_embedding = self.approximate_posterior_distribution.rsample()
 
-        # Feed the output of the ref encoder and information about text/speaker into
-        # an MLP to produce the parameteres for the approximate poterior distributions
-        mu, sigma = self.post_encoder_mlp(enc_out)
+        # Nothing, this will sound like Tacotron2 with no mods.
+        # If you want the prosody to be like nvidia/tacotron2, than use this
+        else: 
+            VAE_embedding = self.prior_distribution.sample().unsqueeze(0)
 
 
-         # Sample from the posterior: z ~ q(z|x)
-        self.approximate_posterior_distribution = MVN(mu, torch.diag_embed(sigma))
-        VAE_embedding = self.approximate_posterior_distribution.rsample()
         return VAE_embedding.unsqueeze(1), self.approximate_posterior_distribution, self.prior_distribution, self.beta
 
 
@@ -122,7 +132,6 @@ class ReferenceEncoder(nn.Module):
             for i in range(num_layers)
         ]
         self.convs = nn.ModuleList(convs)
-        self.training = False
         self.bns = nn.ModuleList([nn.BatchNorm2d(num_features=filter_size) for filter_size in filters[1:]])
 
         post_conv_height = calculate_post_conv_height(num_mel, 3, 2, 2, num_layers)
@@ -183,14 +192,18 @@ class ReferenceEncoder(nn.Module):
 
         return last_output.to(inputs.device)  # [B, 128]
     
+ # The changes from the original class are:
+ # 1. It uses an bidirectional LSTM instead, this should make it more expressive
+ # 2. It has 2 layers, makes it understand more complex things  (This one was plug and play so thats a good thing)
 class TextSummary(nn.Module):
     def __init__(self, embedding_dim, encoder_output_dim):
         super().__init__()
         self.lstm = nn.LSTM(
-            encoder_output_dim,  # text embedding dimension from the text encoder
-            embedding_dim,  # fixed length output summary the lstm creates from the input
+            encoder_output_dim, 
+            embedding_dim // 2,  
             batch_first=True,
-            bidirectional=False,
+            num_layers=2,
+            bidirectional=True,
         )
 
     def forward(self, inputs, input_lengths):
@@ -200,8 +213,11 @@ class TextSummary(nn.Module):
         )  # dynamic rnn sequence padding
         self.lstm.flatten_parameters()
         _, (ht, _) = self.lstm(packed_seqs)
-        last_output = ht[-1]
-        return last_output
+
+        forward_hidden = ht[-2, :, :]    # last layer forward
+        backward_hidden = ht[-1, :, :]   # last layer backward
+        summary = torch.cat([forward_hidden, backward_hidden], dim=-1)  # [batch, embedding_dim]
+        return summary
 
 
 class PostEncoderMLP(nn.Module):

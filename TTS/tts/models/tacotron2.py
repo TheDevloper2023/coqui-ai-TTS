@@ -307,6 +307,7 @@ class Tacotron2(BaseTacotron):
         if self.use_capacitron_vae:
             loss_dict["capacitron_vae_beta_loss"].backward()
             optimizer.first_step()
+    
 
     def train_step(self, batch: dict, criterion: torch.nn.Module):
         """A single training step. Forward pass and loss computation.
@@ -417,3 +418,12 @@ class Tacotron2(BaseTacotron):
         tokenizer, new_config = TTSTokenizer.init_from_config(config)
         speaker_manager = SpeakerManager.init_from_config(new_config, samples)
         return Tacotron2(new_config, ap, tokenizer, speaker_manager)
+    
+
+    def optimize(self, batch, trainer):
+        """Minimal custom optimize hook — Capacitron β is handled in before_backward_pass + optimizer."""
+        outputs, loss_dict = self.train_step(batch, trainer.criterion)
+        
+        # Let trainer handle the main backward + step (it already knows about AMP, grad clipping, etc.)
+        # No need to call backward/step manually here unless you have very special needs
+        return outputs, loss_dict

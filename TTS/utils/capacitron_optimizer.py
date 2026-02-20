@@ -48,6 +48,28 @@ class CapacitronOptimizer:
         self.primary_optimizer.load_state_dict(state_dict[0])
         self.secondary_optimizer.load_state_dict(state_dict[1])
 
+    def optimize(self, loss, beta_loss):
+        """
+        Performs a single optimization step for CapacitronVAE.
+
+        Args:
+            loss: Main model loss (decoder + postnet)
+            beta_loss: Capacitron beta loss (secondary)
+        
+        
+        """
+        # backward main loss
+        loss.backward()
+
+        # backward beta loss if provided
+        if beta_loss is not None:
+            beta_loss.backward()
+            self.first_step()  # secondary step for beta
+
+        # primary optimizer step
+        self.step()
+        self.zero_grad()
+
     def state_dict(self):
         return [self.primary_optimizer.state_dict(), self.secondary_optimizer.state_dict()]
 
