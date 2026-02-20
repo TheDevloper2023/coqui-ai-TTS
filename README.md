@@ -1,4 +1,5 @@
 # <img src="https://github.com/TheDevloper2023/coqui-ai-TTS/blob/main/images/MS_Paint_Logo_IM_Lazy.png" height="56"/>
+# Lunar TTS
 
 Think of it as a 15.ai but open source thing. This modifies Capacitron to allow conditioning it on text (without reference audio)
 
