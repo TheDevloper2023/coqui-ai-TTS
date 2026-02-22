@@ -148,19 +148,6 @@ class Tacotron2(BaseTacotron):
                 self.max_decoder_steps,
             )
 
-        # Temporary until I have good pretrain
-        # We freeze the encoder, prenet and attention from the pretrained DCA model
-        for param in self.encoder.parameters():
-            param.requires_grad = False
-
-        for param in self.decoder.prenet.parameters():
-            param.requires_grad = False
-
-        for param in self.decoder.attention.parameters():
-            param.requires_grad = False
-        
-
-
     @staticmethod
     def shape_outputs(mel_outputs, mel_outputs_postnet, alignments):
         """Final reshape of the model output tensors."""
