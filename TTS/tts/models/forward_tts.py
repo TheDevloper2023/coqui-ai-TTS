@@ -17,6 +17,10 @@ from TTS.tts.utils.speakers import SpeakerManager
 from TTS.tts.utils.text.tokenizer import TTSTokenizer
 from TTS.tts.utils.visual import plot_alignment, plot_avg_energy, plot_avg_pitch, plot_spectrogram
 
+
+# CapacitronTTS
+from TTS.tts.layers.tacotron.capacitron_layers import CapacitronVAE
+
 logger = logging.getLogger(__name__)
 
 

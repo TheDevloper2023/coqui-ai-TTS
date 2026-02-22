@@ -22,7 +22,7 @@ class CapacitronVAE(nn.Module):
         reference_encoder_out_dim=128,
         speaker_embedding_dim=None,
         text_summary_embedding_dim=None,
-        ref_drop_rate: float = 0.25
+        ref_drop_rate: float = 0.15
     ):
         super().__init__()
         # Init distributions
@@ -49,6 +49,11 @@ class CapacitronVAE(nn.Module):
         self.reference_encoder_out_dim = reference_encoder_out_dim
         self.ref_dropout_rate = ref_drop_rate
 
+
+        self.dropout = nn.Dropout(self.ref_dropout_rate)
+        self.ref_norm = nn.LayerNorm(self.reference_encoder_out_dim)
+        self.text_norm = nn.LayerNorm(text_summary_embedding_dim)
+
     def forward(self, reference_mel_info=None, text_info=None, speaker_embedding=None):
         device = next(self.parameters()).device # Get current device safely
         self.prior_distribution = MVN(
@@ -60,6 +65,7 @@ class CapacitronVAE(nn.Module):
                 text_inputs = text_info[0]
                 input_lengths = text_info[1]
                 text_summary_out = self.text_summary_net(text_inputs, input_lengths).to(device)
+                text_summary_out = self.text_norm(text_summary_out)
                 
 
         # Use reference
@@ -68,6 +74,11 @@ class CapacitronVAE(nn.Module):
             reference_mels = reference_mel_info[0]  # [batch_size, num_frames, num_mels]
             mel_lengths = reference_mel_info[1]  # [batch_size]
             enc_out = self.encoder(reference_mels, mel_lengths)
+            enc_out = self.ref_norm(enc_out)
+            
+            # Dropout not sucking
+            if self.training:
+                enc_out = self.dropout(enc_out)
 
             if text_summary_out is not None:
                 enc_out = torch.cat([enc_out, text_summary_out], dim=-1)
@@ -76,24 +87,14 @@ class CapacitronVAE(nn.Module):
                 speaker_embedding = torch.squeeze(speaker_embedding)
                 enc_out = torch.cat([enc_out, speaker_embedding], dim=-1)
 
-            
-            
-            #Dropout, sometimes it makes the audio refrence zero and it forces the model to learn from text on that step
-            #It makes it learn Text -> VAE embedding better
-            if self.training and self.ref_dropout_rate > 0.0:
-                if torch.rand(1, device=device).item() < self.ref_dropout_rate:
-                    enc_out = torch.zeros_like(enc_out)
-
             mu, sigma = self.post_encoder_mlp(enc_out)
+            sigma = torch.clamp(sigma, min=0.1, max=10.0)
             self.approximate_posterior_distribution = MVN(mu, torch.diag_embed(sigma))
             VAE_embedding = self.approximate_posterior_distribution.rsample()
 
         # Text only
-        # What it does is instead of doing a regular audio file, it replaces the audio data with zeros, it relies only on text
         elif text_info is not None: 
-            batch_size = text_inputs.size(0)
-            dummy_audio = torch.zeros(batch_size, self.reference_encoder_out_dim).to(device)
-            enc_out = torch.cat([dummy_audio, text_summary_out], dim=-1)
+            enc_out = text_summary_out 
 
             if speaker_embedding is not None:
                 speaker_embedding = torch.squeeze(speaker_embedding)
@@ -101,6 +102,7 @@ class CapacitronVAE(nn.Module):
 
             
             mu, sigma = self.post_encoder_mlp(enc_out)
+            sigma = torch.clamp(sigma, min=0.1, max=10.0)
             self.approximate_posterior_distribution = MVN(mu, torch.diag_embed(sigma))
             VAE_embedding = self.approximate_posterior_distribution.rsample()
 
@@ -195,6 +197,7 @@ class ReferenceEncoder(nn.Module):
  # The changes from the original class are:
  # 1. It uses an bidirectional LSTM instead, this should make it more expressive
  # 2. It has 2 layers, makes it understand more complex things  (This one was plug and play so thats a good thing)
+ # 3. It has 0.2 dropout to prevent overfitting (NEW)
 class TextSummary(nn.Module):
     def __init__(self, embedding_dim, encoder_output_dim):
         super().__init__()
@@ -204,19 +207,38 @@ class TextSummary(nn.Module):
             batch_first=True,
             num_layers=2,
             bidirectional=True,
+            dropout=0.2,
         )
 
+        self.proj = nn.Linear(embedding_dim, embedding_dim)
+        self.activation = nn.Tanh()
+        self.norm = nn.LayerNorm(embedding_dim)
     def forward(self, inputs, input_lengths):
         # Routine for fetching the last valid output of a dynamic LSTM with varying input lengths and padding
         packed_seqs = nn.utils.rnn.pack_padded_sequence(
-            inputs, input_lengths.tolist(), batch_first=True, enforce_sorted=False
+            inputs, input_lengths.cpu().tolist(), batch_first=True, enforce_sorted=False
         )  # dynamic rnn sequence padding
         self.lstm.flatten_parameters()
-        _, (ht, _) = self.lstm(packed_seqs)
+        out_pack, (ht, ct) = self.lstm(packed_seqs)
 
-        forward_hidden = ht[-2, :, :]    # last layer forward
-        backward_hidden = ht[-1, :, :]   # last layer backward
-        summary = torch.cat([forward_hidden, backward_hidden], dim=-1)  # [batch, embedding_dim]
+        out, lens = nn.utils.rnn.pad_packed_sequence(
+            out_pack,
+            batch_first=True
+        )  # → [B, max_T, hidden*2]
+
+        lens = lens.to(inputs.device)
+
+        # Instead of concat ing the last to layers of the bi, we are just mean pooling the lstm outputs
+        mask = torch.arange(out.size(1), device=inputs.device).unsqueeze(0) < lens.unsqueeze(1)
+        mask = mask.unsqueeze(-1).expand(-1, -1, out.size(-1)).float()
+        summed = (out * mask).sum(dim=1)
+        count = mask.sum(dim=1).clamp(min=1e-9)
+        mean_pooled = summed / count
+
+        # normalazation and slight emo boost
+        summary = self.proj(mean_pooled)
+        summary = self.activation(summary)
+        summary = self.norm(summary)
         return summary
 
 

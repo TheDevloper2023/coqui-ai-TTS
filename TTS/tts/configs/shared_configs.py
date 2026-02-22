@@ -83,7 +83,7 @@ class CapacitronVAEConfig(Coqpit):
     capacitron_use_speaker_embedding: bool = False
     capacitron_VAE_loss_alpha: float = 0.25
     capacitron_grad_clip: float = 5.0
-    capacitron_reference_dropout_rate: float = 0.25
+    capacitron_reference_dropout_rate: float = 0.15
     def check_values(self) -> None:
         """Check config fields."""
         c = asdict(self)
